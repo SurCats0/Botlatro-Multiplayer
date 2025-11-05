@@ -62,7 +62,7 @@ import {
   handleTwoPlayerMatchVoting,
   handleVoting,
 } from '../utils/voteHelpers'
-import { drawPlayerStatsCanvas } from '../utils/canvasHelpers'
+import { drawPlayerMMRStatsCanvas } from '../utils/canvasHelpers'
 import { generateBackgroundPreview } from '../commands/queues/setStatsBackground'
 import { getBackgroundById } from '../utils/backgroundManager'
 
@@ -586,10 +586,10 @@ export default {
               interaction.user.id,
               queueId,
             )
-            const statFile = await drawPlayerStatsCanvas(
+            const statFile = await drawPlayerMMRStatsCanvas(
               queueName,
-              playerStats,
               false,
+              playerStats,
             )
             const viewStatsButtons = setupViewStatsButtons(queueName)
 

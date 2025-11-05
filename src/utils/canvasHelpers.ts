@@ -7,6 +7,8 @@ import {
 import { StatsCanvasPlayerData } from 'psqlDB'
 import { client, getGuild } from 'client'
 import path from 'path'
+import { NumberSchema } from 'zod/v4/core/json-schema.cjs'
+import { nullable } from 'zod'
 
 const bgDir = process.env.ASSETS_DIR || path.join(process.cwd(), 'assets')
 const fontDir = process.env.FONTS_DIR || path.join(process.cwd(), 'fonts')
@@ -414,6 +416,7 @@ function createGraph(
   xlen: number,
   ylen: number,
   byDate: boolean = false,
+  ytop: number = 0,
 ) {
   /**
    * Draws normalizedPoints to ctx. The top left of the graph is at x,y, and the graph should be xlen across and ylen down
@@ -428,12 +431,13 @@ function createGraph(
   const ratings = normalizedPoints.map((p) => p.rating)
   const minRating = Math.round(Math.min(...ratings))
   const maxRating = playerData.peak_mmr
-  const ratingRange = maxRating - minRating || 1
+  const ratingRange = (maxRating + ytop) - minRating || 1
 
   // Find min/max x values for scaling (in case byDate gives non-integer xVar)
   const xValues = normalizedPoints.map((p) => p.xVar)
   const minX = Math.min(...xValues)
   const maxX = Math.max(...xValues)
+
   const xRange = maxX - minX || 1
 
   //draw divides
@@ -526,7 +530,7 @@ function createGraph(
 
   guideRatings.forEach((r) => {
     // Skip if the line is outside of the current visible range
-    if (r < minRating || r > maxRating) return
+    if (r < minRating || r > maxRating + ytop) return
 
     const yPos =
       graphY + graphYLen - ((r - minRating) / ratingRange) * graphYLen
@@ -630,7 +634,7 @@ function createGraph(
 
   guideRatings.forEach((r) => {
     // Skip if the line is outside of the current visible range
-    if (r < minRating || r > maxRating) return
+    if (r < minRating || r > maxRating + ytop) return
 
     const yPos =
       graphY + graphYLen - ((r - minRating) / ratingRange) * graphYLen
@@ -1057,23 +1061,16 @@ async function rankupBar(
   )
 }
 
-export async function drawPlayerStatsCanvas(
-  queueName: string,
+
+async function addGeneralData(
+  ctx: CanvasRenderingContext2D,
   playerData: StatsCanvasPlayerData,
-  byDate: boolean,
+  queueName: string,
 ) {
-  // Render at higher resolution for sharper text (2x, 4x, etc.)
-  // Higher scale = more anti-aliasing but larger file size
-  const scale = 2
-  const canvas = new Canvas(config.width * scale, config.height * scale)
-  const ctx = canvas.getContext('2d')
-
-  ctx.imageSmoothingEnabled = false
-  ctx.scale(2, 2)
-
   //back elements
   await addBackground(ctx, playerData.stat_background)
   ctx.imageSmoothingEnabled = false
+  
   await addBackBox(
     ctx,
     config.width / 32,
@@ -1088,7 +1085,7 @@ export async function drawPlayerStatsCanvas(
 
   ctx.textBaseline = 'middle'
 
-  //change the gray and red boxes depending on if mmr is 5 digits or >5
+  //change the gray, red, and progress bar boxes depending on if mmr is 5 digits or >5
   if (`${playerData.peak_mmr}`.length > 5) {
     await addGrayBox(ctx, 180, 50, 385, 80)
     await addRedBox(ctx, 575, 50, 166, 80)
@@ -1111,10 +1108,100 @@ export async function drawPlayerStatsCanvas(
 
   addSideData(ctx, playerData, 60, 170, 200, 85)
   drawPreviousGames(ctx, playerData, 60, 360, 200, 180)
+}
+
+export async function drawPlayerMMRStatsCanvas(
+  queueName: string,
+  byDate: boolean,
+  playerData: StatsCanvasPlayerData,
+) {
+  // Render at higher resolution for sharper text (2x, 4x, etc.)
+  // Higher scale = more anti-aliasing but larger file size
+  const scale = 2
+  const canvas = new Canvas(config.width * scale, config.height * scale)
+  const ctx = canvas.getContext('2d')
+
+  ctx.imageSmoothingEnabled = false
+  ctx.scale(2, 2)
+
+  
+  await addGeneralData(ctx,playerData,queueName)
 
   //graph
   await addBlackBox(ctx, 270, 170, 470, 370)
-  createGraph(ctx, playerData, 280, 180, 450, 350, byDate)
+  createGraph(ctx, playerData, 280, 180, 450, 350, byDate,0)
+
+  // Export with high quality settings
+  return await canvas.toBuffer('png', {
+    quality: 1.0,
+    density: scale,
+  })
+}
+
+export async function drawPlayerWinrateStatsCanvas(
+  queueName: string,
+  numGames: number | null= 30,
+  playerData: StatsCanvasPlayerData,
+) {
+  // Render at higher resolution for sharper text (2x, 4x, etc.)
+  // Higher scale = more anti-aliasing but larger file size
+  const scale = 2
+  const canvas = new Canvas(config.width * scale, config.height * scale)
+  const ctx = canvas.getContext('2d')
+
+  ctx.imageSmoothingEnabled = false
+  ctx.scale(2, 2)
+
+  await addGeneralData(ctx,playerData,queueName)
+
+
+  // Export with high quality settings
+  return await canvas.toBuffer('png', {
+    quality: 1.0,
+    density: scale,
+  })
+}
+
+export async function drawPlayerDeckStakeStatsCanvas(
+  queueName: string,
+  playerData: StatsCanvasPlayerData,
+) {
+  // Render at higher resolution for sharper text (2x, 4x, etc.)
+  // Higher scale = more anti-aliasing but larger file size
+  const scale = 2
+  const canvas = new Canvas(config.width * scale, config.height * scale)
+  const ctx = canvas.getContext('2d')
+
+  ctx.imageSmoothingEnabled = false
+  ctx.scale(2, 2)
+
+  await addGeneralData(ctx,playerData,queueName)
+
+
+  // Export with high quality settings
+  return await canvas.toBuffer('png', {
+    quality: 1.0,
+    density: scale,
+  })
+}
+
+export async function drawCompareStatsCanvas(
+  queueName: string,
+  numUsers: number,
+  player1Data: StatsCanvasPlayerData,
+  player2Data: StatsCanvasPlayerData = player1Data,
+  player3Data: StatsCanvasPlayerData = player1Data,
+  player4Data: StatsCanvasPlayerData = player1Data,
+) {
+  // Render at higher resolution for sharper text (2x, 4x, etc.)
+  // Higher scale = more anti-aliasing but larger file size
+  const scale = 2
+  const canvas = new Canvas(config.width * scale, config.height * scale)
+  const ctx = canvas.getContext('2d')
+
+  ctx.imageSmoothingEnabled = false
+  ctx.scale(2, 2)
+
 
   // Export with high quality settings
   return await canvas.toBuffer('png', {
